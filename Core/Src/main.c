@@ -82,8 +82,6 @@ float Read_Soil_Humidity(void);
 float Read_Soil_Luminosity(void);
 void ESP01_Init(void);
 void ESP01_SendATCommands(float temperature, float humidity, float soilHumidity, float luminosity, int lamp_stat, int pump_stat);
-void ESP01_Update_Values_Receive(int *lamp_stat, int *pump_stat);
-void extractDataFromResponse(char *response, int *lamp_stat, int *pump_stat);
 
 int main(void) {
     float temperature, humidity, soilHumidity, luminosity;
@@ -104,15 +102,14 @@ int main(void) {
     ESP01_Init();
 
     while (1) {
-    	//ESP01_Update_Values_Receive(&lamp_stat_b, &pump_stat_b);
         Read_DataDHT(&temperature, &humidity);
         soilHumidity = Read_Soil_Humidity();
         luminosity = Read_Soil_Luminosity();
 
         lamp_stat = (luminosity < 100) ? 1 : 0;
         pump_stat = (soilHumidity < 30) ? 1 : 0;
-        HAL_GPIO_WritePin(GPIOE, Pump_Pin, !pump_stat);//Activee au niveau bas
-        HAL_GPIO_WritePin(GPIOE, Lamp_Pin, !lamp_stat); //Activee au niveau bas
+        HAL_GPIO_WritePin(GPIOE, Pump_Pin, !pump_stat);
+        HAL_GPIO_WritePin(GPIOE, Lamp_Pin, !lamp_stat); 
         ESP01_SendATCommands(temperature, humidity, soilHumidity, luminosity, lamp_stat, pump_stat);
     }
 }
@@ -121,48 +118,7 @@ void UART_SendString(UART_HandleTypeDef *huart, const char *str) {
     HAL_UART_Transmit(huart, (uint8_t*)str, strlen(str), HAL_MAX_DELAY);
 }
 
-void UART_GetString(UART_HandleTypeDef *huart, char *buffer, int maxLength) {
-    char c;
-    int i = 0;
-    HAL_StatusTypeDef status;
-    uint32_t startTime = HAL_GetTick(); // Get the start time for timeout handling
 
-    // Clear the buffer
-    memset(buffer, 0, maxLength);
-
-    // Debug: start reception
-    Debug_Print("Starting UART reception");
-
-    // Receive characters one by one until 5 seconds have elapsed
-    while (HAL_GetTick() - startTime < 100000) { // Timeout of 5 seconds
-        // Receive a single character with a timeout of 100 milliseconds
-        status = HAL_UART_Receive(huart, (uint8_t *)&c, 1, 100);
-
-        if (status == HAL_OK) {
-            // Store the character in the buffer if there is space
-            if (i < maxLength - 1) {
-                buffer[i++] = c;
-            }
-
-            // Debug: character received
-            Debug_Print("Character received");
-            Debug_Print(c);
-        }
-    }
-
-    // Null-terminate the string
-    buffer[i] = '\0';
-
-    // Debug: end reception
-    Debug_Print("End of UART reception");
-}
-
-
-void Debug_Print(char *message) {
-    // Implement this function to output debug messages, e.g., via another UART interface or an LED.
-    UART_SendString(&huart3, message);
-    UART_SendString(&huart3, "\r\n");
-}
 
 
 void DHT_Init(void) {
@@ -227,29 +183,7 @@ void ESP01_SendATCommands(float temperature, float humidity, float soilHumidity,
     HAL_Delay(250);
 }
 
-void ESP01_Update_Values_Receive(int *lamp_stat, int *pump_stat) {
-    char cmd[128];
-    char response[1000];
-    UART_SendString(&huart2, "AT+CIPSTART=\"TCP\",\"api.thingspeak.com\",80\r\n");
-    UART_SendString(&huart3, "AT+CIPSTART=\"TCP\",\"api.thingspeak.com\",80\r\n");
-    HAL_Delay(250);
 
-    UART_SendString(&huart2, "AT+CIPSEND=100\r\n");
-    UART_SendString(&huart3, "AT+CIPSEND=100\r\n");
-    HAL_Delay(250);
-
-    snprintf(cmd, sizeof(cmd), "GET https://api.thingspeak.com/channels/2565854/feeds.json?api_key=V1SZN33F79RXDJO4&results=1\r\n");
-    UART_SendString(&huart2, cmd);
-    UART_SendString(&huart3, cmd);
-    UART_GetString(&huart2, response, sizeof(response));
-    UART_SendString(&huart3, response);
-    extractDataFromResponse(response, lamp_stat, pump_stat);
-    HAL_Delay(250);
-}
-
-void extractDataFromResponse(char *response, int *lamp_stat, int *pump_stat) {
-    sscanf(response, "%*[^\"field5\":]\"field7\":\"%d\",\"field8\":\"%d\"", lamp_stat, pump_stat);
-}
 
 /**
   * @brief System Clock Configuration
